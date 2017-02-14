@@ -124,12 +124,14 @@ func Dial(network, addr string) (*Conn, error) {
 func DialTLS(network, addr string, config *tls.Config) (*Conn, error) {
 	dc, err := net.DialTimeout(network, addr, DefaultTimeout)
 	if err != nil {
+		fmt.Println("dialTLS-1", err)
 		return nil, NewError(ErrorNetwork, err)
 	}
 	c := tls.Client(dc, config)
 	err = c.Handshake()
 	if err != nil {
 		// Handshake error, close the established connection before we return an error
+		fmt.Println("dialTLS-2", err)
 		dc.Close()
 		return nil, NewError(ErrorNetwork, err)
 	}

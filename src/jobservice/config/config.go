@@ -16,121 +16,107 @@
 package config
 
 import (
-	"fmt"
 	"os"
-	"strconv"
 
-	"github.com/astaxie/beego"
-	"github.com/vmware/harbor/src/common/utils/log"
+	comcfg "github.com/vmware/harbor/src/common/config"
+	"github.com/vmware/harbor/src/common/models"
 )
 
-const defaultMaxWorkers int = 10
+var mg *comcfg.Manager
 
-var maxJobWorkers int
-var localUIURL string
-var localRegURL string
-var logDir string
-var uiSecret string
-var secretKey string
-var verifyRemoteCert string
+// Init configurations
+func Init() error {
+	adminServerURL := os.Getenv("ADMIN_SERVER_URL")
+	if len(adminServerURL) == 0 {
+		adminServerURL = "http://adminserver"
+	}
+	mg = comcfg.NewManager(adminServerURL, UISecret(), true)
 
-func init() {
-	maxWorkersEnv := os.Getenv("MAX_JOB_WORKERS")
-	maxWorkers64, err := strconv.ParseInt(maxWorkersEnv, 10, 32)
-	maxJobWorkers = int(maxWorkers64)
+	if err := mg.Init(); err != nil {
+		return err
+	}
+
+	if _, err := mg.Load(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// VerifyRemoteCert returns bool value.
+func VerifyRemoteCert() (bool, error) {
+	cfg, err := mg.Get()
 	if err != nil {
-		log.Warningf("Failed to parse max works setting, error: %v, the default value: %d will be used", err, defaultMaxWorkers)
-		maxJobWorkers = defaultMaxWorkers
+		return true, err
 	}
+	return cfg[comcfg.VerifyRemoteCert].(bool), nil
+}
 
-	localRegURL = os.Getenv("REGISTRY_URL")
-	if len(localRegURL) == 0 {
-		localRegURL = "http://registry:5000"
-	}
-
-	localUIURL = os.Getenv("UI_URL")
-	if len(localUIURL) == 0 {
-		localUIURL = "http://ui"
-	}
-
-	logDir = os.Getenv("LOG_DIR")
-	if len(logDir) == 0 {
-		logDir = "/var/log"
-	}
-
-	f, err := os.Open(logDir)
-	defer f.Close()
+// Database ...
+func Database() (*models.Database, error) {
+	cfg, err := mg.Get()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	finfo, err := f.Stat()
-	if err != nil {
-		panic(err)
-	}
-	if !finfo.IsDir() {
-		panic(fmt.Sprintf("%s is not a direcotry", logDir))
-	}
+	database := &models.Database{}
+	database.Type = cfg[comcfg.DatabaseType].(string)
+	mysql := &models.MySQL{}
+	mysql.Host = cfg[comcfg.MySQLHost].(string)
+	mysql.Port = int(cfg[comcfg.MySQLPort].(float64))
+	mysql.Username = cfg[comcfg.MySQLUsername].(string)
+	mysql.Password = cfg[comcfg.MySQLPassword].(string)
+	mysql.Database = cfg[comcfg.MySQLDatabase].(string)
+	database.MySQL = mysql
+	sqlite := &models.SQLite{}
+	sqlite.File = cfg[comcfg.SQLiteFile].(string)
+	database.SQLite = sqlite
 
-	uiSecret = os.Getenv("UI_SECRET")
-	if len(uiSecret) == 0 {
-		panic("UI Secret is not set")
-	}
-
-	verifyRemoteCert = os.Getenv("VERIFY_REMOTE_CERT")
-	if len(verifyRemoteCert) == 0 {
-		verifyRemoteCert = "on"
-	}
-
-	configPath := os.Getenv("CONFIG_PATH")
-	if len(configPath) != 0 {
-		log.Infof("Config path: %s", configPath)
-		beego.LoadAppConfig("ini", configPath)
-	}
-
-	secretKey = os.Getenv("SECRET_KEY")
-	if len(secretKey) != 16 {
-		panic("The length of secretkey has to be 16 characters!")
-	}
-
-	log.Debugf("config: maxJobWorkers: %d", maxJobWorkers)
-	log.Debugf("config: localUIURL: %s", localUIURL)
-	log.Debugf("config: localRegURL: %s", localRegURL)
-	log.Debugf("config: verifyRemoteCert: %s", verifyRemoteCert)
-	log.Debugf("config: logDir: %s", logDir)
-	log.Debugf("config: uiSecret: ******")
+	return database, nil
 }
 
 // MaxJobWorkers ...
-func MaxJobWorkers() int {
-	return maxJobWorkers
+func MaxJobWorkers() (int, error) {
+	cfg, err := mg.Get()
+	if err != nil {
+		return 0, err
+	}
+	return int(cfg[comcfg.MaxJobWorkers].(float64)), nil
 }
 
 // LocalUIURL returns the local ui url, job service will use this URL to call API hosted on ui process
 func LocalUIURL() string {
-	return localUIURL
+	return "http://ui"
 }
 
 // LocalRegURL returns the local registry url, job service will use this URL to pull image from the registry
-func LocalRegURL() string {
-	return localRegURL
+func LocalRegURL() (string, error) {
+	cfg, err := mg.Get()
+	if err != nil {
+		return "", err
+	}
+	return cfg[comcfg.RegistryURL].(string), nil
 }
 
 // LogDir returns the absolute path to which the log file will be written
-func LogDir() string {
-	return logDir
-}
-
-// UISecret will return the value of secret cookie for jobsevice to call UI API.
-func UISecret() string {
-	return uiSecret
+func LogDir() (string, error) {
+	cfg, err := mg.Get()
+	if err != nil {
+		return "", err
+	}
+	return cfg[comcfg.JobLogDir].(string), nil
 }
 
 // SecretKey will return the secret key for encryption/decryption password in target.
-func SecretKey() string {
-	return secretKey
+func SecretKey() (string, error) {
+	cfg, err := mg.Get()
+	if err != nil {
+		return "", err
+	}
+	return cfg[comcfg.SecretKey].(string), nil
 }
 
-// VerifyRemoteCert return the flag to tell jobservice whether or not verify the cert of remote registry
-func VerifyRemoteCert() bool {
-	return verifyRemoteCert != "off"
+// UISecret returns the value of UI secret cookie, used for communication between UI and JobService
+// TODO
+func UISecret() string {
+	return os.Getenv("UI_SECRET")
 }

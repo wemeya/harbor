@@ -139,6 +139,7 @@ func connectTest(ldapConfs models.LdapConf) error {
 	}
 
 	if err != nil {
+		fmt.Println("ldap error", err)
 		return err
 	}
 	defer ldap.Close()
